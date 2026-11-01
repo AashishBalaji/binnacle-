@@ -11,9 +11,12 @@ purpose: keeping an operator's situational awareness intact during an
 alarm flood, a shift change, or a nuisance alarm firing every few
 minutes, which is exactly when a naive alerts list tends to lose it.
 
-This is stage 1 of a planned three-stage project. Stage 1 (this repo,
-as it stands) is complete and shippable on its own. Stages 2 and 3
-have not been started — see [Project scope and roadmap](#project-scope-and-roadmap).
+This is a three-stage project, each stage built to be complete and
+shippable on its own: the alarm console itself, a mode-confusion-safe
+automation handoff, and an explainable-AI recommendation review
+console. All three are complete — see
+[Project scope and roadmap](#project-scope-and-roadmap) for the detail
+on each.
 
 ## What this does
 
@@ -57,6 +60,13 @@ have not been started — see [Project scope and roadmap](#project-scope-and-roa
 - A mode-confusion-safe operator/automation handoff panel
   (`src/handoff/`, stage 2 — see roadmap below for the detail), with
   its own XState machine and fast-check property proofs.
+- An explainable-AI recommendation panel (`src/recommendations/`,
+  stage 3 — see roadmap below) that reviews the current board and
+  suggests Acknowledge / Shelve / Escalate actions, each with a
+  weighted-factor breakdown an operator can expand and read, not a
+  bare confidence number. Accepting a recommendation applies the real
+  alarm action (`ack`/`shelve`) through the same lifecycle reducer as
+  the manual row buttons.
 
 ## What's synthetic
 
@@ -81,6 +91,16 @@ mistaken for real industrial data.
   operator viewing one board.
 - No persistence beyond the backend's in-memory, size-capped history
   (200 events). Restarting the server clears it; there's no database.
+- No trained ML model behind the "AI" in stage 3's recommendation
+  engine (`src/recommendations/engine.ts`) — it's a deterministic,
+  rule-based scoring function, on purpose: see that file's docstring
+  for why a real model would work against the stage's actual goal
+  (an inspectable, provably-explainable recommendation, not a label
+  claiming to be one).
+- No real escalation/paging system behind stage 3's ESCALATE action.
+  Accepting an ESCALATE recommendation acknowledges the alarm and
+  records the decision in the (in-memory, non-persistent) review log
+  — nothing is actually paged or ticketed.
 
 ## Running it
 
@@ -122,9 +142,36 @@ than a scaffold for the next one:
    than XState's timer-based `after`, so the machine stays
    deterministic to test. `HandoffPanel.tsx` renders one unambiguous
    state at a time — never a blended "manual/automatic" indicator.
-3. **Explainable-AI recommendation review console** (not started) —
-   a review UI for AI-generated recommendations that makes the
-   reasoning inspectable rather than opaque.
+3. **Explainable-AI recommendation review console** (complete) —
+   `src/recommendations/engine.ts` is a pure, deterministic,
+   rule-based scoring function (`generateRecommendations(board, now)`)
+   over the same alarm board stage 1 already models — not a trained
+   model, deliberately: the stage's actual claim is that a
+   recommendation's reasoning is genuinely inspectable, and the only
+   way to make that true rather than asserted is for the reasoning to
+   be a short list of named, weighted rules rather than a model's
+   opaque output. Three recommended actions: ACKNOWLEDGE (the default
+   for any unacknowledged alarm), ESCALATE (once a critical/high alarm
+   passes a priority-specific age threshold — never recommended for
+   low priority, the same severity-gating principle as stage 1's flood
+   suppression), and SHELVE (a low-priority alarm still active well
+   past acknowledgment — the classic ISA-18.2 nuisance-alarm pattern).
+   Every recommendation's `confidence` is the clamped sum of its own
+   `factors[].weight`, so the breakdown `RecommendationPanel.tsx`
+   shows behind a native `<details>`/`<summary>` disclosure always
+   adds up to the number an operator is being asked to trust — proved
+   for arbitrary boards by `engine.properties.test.ts`'s fast-check
+   invariants, the same generative-testing discipline as stages 1 and
+   2. Accepting a recommendation dispatches the real `ack`/`shelve`
+   action (ESCALATE also acks — see the scope note above on why);
+   rejecting just records the decision. `useRecommendationReview.ts`
+   keys each decision by tag *and* the alarm excursion's `raisedAt`,
+   so a later re-raise of the same tag is reviewed fresh rather than
+   silently reusing a stale decision — mirroring stage 1's "one
+   instance per excursion" rule. The review log this hook keeps is
+   explicitly not an ISA-18.2 audit journal (see scope above):
+   in-memory only, lost on refresh, there only so a reviewer can see
+   what was decided and why while the page is open.
 
 ## CI
 

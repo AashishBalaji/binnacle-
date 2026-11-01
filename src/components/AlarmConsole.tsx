@@ -2,8 +2,12 @@ import { useCallback, useMemo, useState } from "react";
 import { List } from "react-window";
 import { useAlarmSystem } from "../alarms/useAlarmSystem";
 import type { AlarmInstance, AlarmPriority } from "../alarms/types";
+import { generateRecommendations, SUGGESTED_SHELVE_DURATION_MS } from "../recommendations/engine";
+import { useRecommendationReview } from "../recommendations/useRecommendationReview";
+import type { Recommendation } from "../recommendations/types";
 import { AlarmRow, type AlarmRowProps } from "./AlarmRow";
 import { FloodBanner } from "./FloodBanner";
+import { RecommendationPanel } from "./RecommendationPanel";
 import { ShelveForm } from "./ShelveForm";
 
 const ROW_HEIGHT = 56;
@@ -55,6 +59,49 @@ export function AlarmConsole() {
     [shelving, shelve],
   );
 
+  // Stage 3: the recommendation engine is a pure function of the same
+  // (board, now) this component already has -- no second, disconnected
+  // copy of the alarm state. `isReviewed` filters out anything the
+  // operator already acted on, so a decision isn't re-prompted every
+  // render; a fresh excursion on the same tag (useRecommendationReview's
+  // tag+raisedAt key) gets a fresh recommendation regardless.
+  const { reviews, recordDecision, isReviewed } = useRecommendationReview();
+  const recommendations = useMemo(
+    () => generateRecommendations(state.board, now).filter((rec) => !isReviewed(rec.tag, rec.raisedAt)),
+    [state.board, now, isReviewed],
+  );
+
+  const handleAcceptRecommendation = useCallback(
+    (recommendation: Recommendation) => {
+      switch (recommendation.action) {
+        case "ACKNOWLEDGE":
+          ack(recommendation.tag);
+          break;
+        case "SHELVE":
+          shelve(
+            recommendation.tag,
+            "Recommended: low-priority, long past acknowledgment",
+            recommendation.suggestedShelveDurationMs ?? SUGGESTED_SHELVE_DURATION_MS,
+          );
+          break;
+        case "ESCALATE":
+          // No real paging/ticketing system sits behind this project
+          // (see README.md's scope section) -- accepting an escalation
+          // acknowledges the alarm and records the decision below, the
+          // same honesty-over-scope choice made everywhere else here.
+          ack(recommendation.tag);
+          break;
+      }
+      recordDecision(recommendation, "accepted", now);
+    },
+    [ack, shelve, recordDecision, now],
+  );
+
+  const handleRejectRecommendation = useCallback(
+    (recommendation: Recommendation, note?: string) => recordDecision(recommendation, "rejected", now, note),
+    [recordDecision, now],
+  );
+
   // Exposed for the demo controls (App.tsx) and for tests -- a real
   // deployment would wire `raise`/`clear` to a live WebSocket feed
   // instead (see server/README, not yet built).
@@ -73,6 +120,28 @@ export function AlarmConsole() {
 
       {shelving ? (
         <ShelveForm tag={shelving} onSubmit={handleShelveSubmit} onCancel={() => setShelving(null)} />
+      ) : null}
+
+      <RecommendationPanel
+        recommendations={recommendations}
+        now={now}
+        onAccept={handleAcceptRecommendation}
+        onReject={handleRejectRecommendation}
+      />
+
+      {reviews.length > 0 ? (
+        <section className="recommendation-log" aria-label="Recommendation review log">
+          <h3>Review log</h3>
+          <ul>
+            {reviews.slice(0, 5).map((review, index) => (
+              <li key={`${review.tag}-${review.reviewedAt}-${index}`}>
+                <span className="recommendation-log-tag">{review.tag}</span> — {review.action.toLowerCase()}{" "}
+                <span className={`recommendation-log-decision decision-${review.decision}`}>{review.decision}</span>
+                {review.note ? `: ${review.note}` : ""}
+              </li>
+            ))}
+          </ul>
+        </section>
       ) : null}
 
       <div className="alarm-list-header" aria-hidden="true">

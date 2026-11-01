@@ -1,7 +1,7 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { axe } from "jest-axe";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AlarmConsole } from "./AlarmConsole";
 
 // The demo "Raise ..." buttons call useAlarmSystem's dispatchers, which
@@ -15,6 +15,10 @@ import { AlarmConsole } from "./AlarmConsole";
 describe("AlarmConsole", () => {
   beforeEach(() => {
     vi.useRealTimers();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it("renders with no active alarms initially and has no accessibility violations", async () => {
@@ -114,4 +118,107 @@ describe("AlarmConsole", () => {
     expect(screen.queryByTestId("alarm-row")).not.toBeInTheDocument();
     expect(screen.getByText("No active alarms.")).toBeInTheDocument();
   });
+
+  it("raising an alarm surfaces a recommendation, and accepting it applies the underlying alarm action and logs the decision", async () => {
+    const user = userEvent.setup();
+    render(<AlarmConsole />);
+
+    await user.click(screen.getByRole("button", { name: "Raise high" }));
+
+    const panel = screen.getByRole("region", { name: "Recommended actions" });
+    expect(within(panel).getByText("Acknowledge")).toBeInTheDocument();
+
+    await user.click(within(panel).getByRole("button", { name: /^Accept recommendation for/ }));
+
+    // Accepting an ACKNOWLEDGE recommendation actually acks the alarm --
+    // not just a cosmetic log entry -- so the row reflects it too.
+    const row = screen.getByTestId("alarm-row");
+    expect(within(row).getByText("Acknowledged")).toBeInTheDocument();
+
+    // The recommendation is now reviewed, so it drops out of the
+    // pending queue, and the decision is recorded in the review log.
+    expect(within(panel).getByText("No recommendations right now.")).toBeInTheDocument();
+    const log = screen.getByRole("region", { name: "Recommendation review log" });
+    expect(within(log).getByText("accepted")).toBeInTheDocument();
+  });
+
+  it("rejecting a recommendation records the decision without touching the alarm, and no longer prompts for it", async () => {
+    const user = userEvent.setup();
+    render(<AlarmConsole />);
+
+    await user.click(screen.getByRole("button", { name: "Raise low" }));
+    const panel = screen.getByRole("region", { name: "Recommended actions" });
+
+    await user.click(within(panel).getByRole("button", { name: /^Reject recommendation for/ }));
+    await user.type(within(panel).getByLabelText("Reason for rejecting (optional)"), "monitoring manually");
+    await user.click(within(panel).getByRole("button", { name: "Confirm reject" }));
+
+    const row = screen.getByTestId("alarm-row");
+    expect(within(row).getByText("Unacknowledged")).toBeInTheDocument(); // untouched
+    expect(within(panel).getByText("No recommendations right now.")).toBeInTheDocument();
+
+    const log = screen.getByRole("region", { name: "Recommendation review log" });
+    expect(within(log).getByText(/monitoring manually/)).toBeInTheDocument();
+    expect(within(log).getByText("rejected")).toBeInTheDocument();
+  });
+
+  it("has no accessibility violations with recommendations and a review log both populated", async () => {
+    const user = userEvent.setup();
+    const { container } = render(<AlarmConsole />);
+
+    await user.click(screen.getByRole("button", { name: "Raise critical" }));
+    await user.click(screen.getByRole("button", { name: "Raise low" }));
+    const panel = screen.getByRole("region", { name: "Recommended actions" });
+    await user.click(within(panel).getAllByRole("button", { name: /^Accept recommendation for/ })[0]);
+
+    const results = await axe(container);
+    expect(results).toHaveNoViolations();
+  });
+
+  // The two tests below push a real alarm's age past the engine's
+  // ESCALATE / SHELVE thresholds (minutes of wall-clock time) without
+  // actually waiting that long: performance.now() is mocked so the
+  // alarm's `raisedAt`/`ackedAt` is stamped early, then the mock jumps
+  // forward before the next real (500ms) TICK -- so `now` state
+  // advances past the threshold on the very next tick, the same TICK
+  // mechanism the app uses in production, not a shortcut around it.
+  it("accepting an ESCALATE recommendation acknowledges the alarm and logs an escalate decision", async () => {
+    const user = userEvent.setup();
+    const nowSpy = vi.spyOn(performance, "now").mockReturnValue(0);
+    render(<AlarmConsole />);
+
+    await user.click(screen.getByRole("button", { name: "Raise critical" }));
+    nowSpy.mockReturnValue(3 * 60_000); // past the 2-minute critical escalation threshold
+
+    const panel = screen.getByRole("region", { name: "Recommended actions" });
+    await waitFor(() => expect(within(panel).getByText("Escalate")).toBeInTheDocument(), { timeout: 2000 });
+
+    await user.click(within(panel).getByRole("button", { name: /^Accept recommendation for/ }));
+
+    const row = screen.getByTestId("alarm-row");
+    expect(within(row).getByText("Acknowledged")).toBeInTheDocument();
+    const log = screen.getByRole("region", { name: "Recommendation review log" });
+    expect(within(log).getByText(/escalate/)).toBeInTheDocument();
+  }, 10_000);
+
+  it("accepting a SHELVE recommendation shelves the alarm with the suggested duration and logs it", async () => {
+    const user = userEvent.setup();
+    const nowSpy = vi.spyOn(performance, "now").mockReturnValue(0);
+    render(<AlarmConsole />);
+
+    await user.click(screen.getByRole("button", { name: "Raise low" }));
+    const row = screen.getByTestId("alarm-row");
+    await user.click(within(row).getByRole("button", { name: /^Acknowledge/ }));
+
+    nowSpy.mockReturnValue(20 * 60_000); // past the 15-minute shelve-candidate age
+
+    const panel = screen.getByRole("region", { name: "Recommended actions" });
+    await waitFor(() => expect(within(panel).getByText("Shelve")).toBeInTheDocument(), { timeout: 2000 });
+
+    await user.click(within(panel).getByRole("button", { name: /^Accept recommendation for/ }));
+
+    expect(within(row).getByText(/Shelved/)).toBeInTheDocument();
+    const log = screen.getByRole("region", { name: "Recommendation review log" });
+    expect(within(log).getByText(/shelve/)).toBeInTheDocument();
+  }, 10_000);
 });

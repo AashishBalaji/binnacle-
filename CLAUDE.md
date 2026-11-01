@@ -20,9 +20,19 @@ a generic app.
   without explicit operator confirmation; no pending state waits
   forever on an unresponsive operator). `HandoffPanel.tsx` renders
   one unambiguous state at a time.
-- **Stage 3 (explainable-AI recommendation review console): NOT
-  started.** This is the next piece of work, but only when the user
-  explicitly asks for it — see "How this project is run" below.
+- **Stage 3 (explainable-AI recommendation review console): complete.**
+  `src/recommendations/engine.ts` — a pure, deterministic rule-based
+  scoring function (not a trained model, deliberately — see the
+  file's docstring and README's scope section) that recommends
+  ACKNOWLEDGE / SHELVE / ESCALATE per alarm, each with a weighted
+  factor breakdown whose weights sum to the stated confidence (proved
+  by fast-check in `engine.properties.test.ts`). `RecommendationPanel.tsx`
+  exposes the breakdown behind a native `<details>` disclosure;
+  accepting a recommendation dispatches the real `ack`/`shelve`
+  action via the stage 1 reducer, not a cosmetic log entry.
+  `useRecommendationReview.ts` tracks accept/reject decisions keyed
+  by tag + excursion (`raisedAt`), in-memory only — explicitly not an
+  ISA-18.2 audit journal. Has not yet had a round-table review pass.
 
 Read `README.md` for the full technical writeup (what's real, what's
 synthetic, what's deliberately out of scope). Don't restate it here;
@@ -43,7 +53,7 @@ keep this file to process and status.
 - **Git commit trailer** (every commit, this repo specifically):
   ```
   Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
-  Claude-Session: https://claude.ai/code/session_01VuPgtJJgPRhnAkrvf1fxbo
+  Claude-Session: https://claude.ai/code/session_016snCqMbqtDAMBMJuTEutDF
   ```
   (The session URL may need updating if continuing from a genuinely
   new session — ask the user, or check the current session's own
