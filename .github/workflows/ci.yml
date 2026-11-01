@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  ci:
+    name: lint, typecheck, test, build, bundle budget
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint (oxlint, incl. jsx-a11y and vitest plugins)
+        run: npm run lint
+
+      - name: Type check
+        run: npx tsc -b
+
+      # Runs the full suite: lifecycle unit tests, the two
+      # fast-check property suites (shelve-survives-re-trip,
+      # flood-never-touches-high/critical), and the AlarmConsole
+      # component tests -- including the jest-axe accessibility
+      # checks. There is no separate "accessibility gate" job: the
+      # axe assertions are real test assertions, and a violation
+      # fails this step like any other failing test, which is a
+      # harder gate than a non-blocking report would be.
+      - name: Test (incl. accessibility assertions)
+        run: npm run test
+
+      - name: Build
+        run: npm run build
+
+      # A real, enforced performance budget: fails the build if the
+      # gzip size of the shipped JS or CSS exceeds scripts/check-bundle-budget.mjs's
+      # thresholds, rather than just reporting a number for someone
+      # to eyeball later.
+      - name: Check bundle size budget
+        run: npm run check-bundle-budget
