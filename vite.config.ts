@@ -11,7 +11,7 @@ export default defineConfig({
     setupFiles: ['./src/test/setup.ts'],
     coverage: {
       provider: 'v8',
-      include: ['src/alarms/**', 'src/components/**', 'server/**'],
+      include: ['src/alarms/**', 'src/components/**', 'src/handoff/**', 'server/**'],
       // Thresholds set just below the actual numbers at the time
       // they were added (91.4/90.6/87.5/92.6 -- see the commit that
       // introduced this), not an aspirational round number: this is

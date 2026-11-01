@@ -54,6 +54,9 @@ have not been started — see [Project scope and roadmap](#project-scope-and-roa
   scrolled out of view.
 - An inline (non-modal) shelve form, chosen over a dialog to avoid
   focus-trap complexity for a low-frequency action.
+- A mode-confusion-safe operator/automation handoff panel
+  (`src/handoff/`, stage 2 — see roadmap below for the detail), with
+  its own XState machine and fast-check property proofs.
 
 ## What's synthetic
 
@@ -93,19 +96,32 @@ npm run build            # tsc -b && vite build
 
 ## Project scope and roadmap
 
-Stage 1 is built to be complete and shippable on its own, rather than
-a scaffold for the later stages:
+Each stage is built to be complete and shippable on its own, rather
+than a scaffold for the next one:
 
-1. **Alarm console** (this repo, as it stands) — the ISA-18.2
-   lifecycle, the backend feed, the virtualized UI, accessibility,
-   CI, and this scope writeup.
-2. **Mode-confusion-safe autonomy handoff panel** (not started) —
-   modeling an operator/automation handoff with
-   [XState](https://stately.ai/docs/xstate), using the same
-   property-based verification approach as stage 1 to check
-   invariants like "the UI can never simultaneously imply automatic
-   and manual control." Mode confusion is a documented contributing
-   factor in several industrial and aviation incidents.
+1. **Alarm console** (complete) — the ISA-18.2 lifecycle, the backend
+   feed, the virtualized UI, accessibility, CI, and this scope
+   writeup.
+2. **Mode-confusion-safe autonomy handoff** (complete) —
+   `src/handoff/handoffMachine.ts` models an operator/automation
+   handoff as an [XState](https://stately.ai/docs/xstate) machine
+   with five states (`manual`, `automationPending`, `automatic`,
+   `manualPending`, `failsafe`). The two safety properties this
+   exists to guarantee, each proved with the same fast-check
+   generative approach as stage 1: automation can never take control
+   in a single step (it always passes through
+   `automationPending` and an explicit operator confirmation first),
+   and no pending state can wait forever on an unresponsive
+   operator — an unanswered automation request safely times out back
+   to manual, and an unacknowledged handback times out to a loud
+   `failsafe` state rather than silently assuming the operator
+   noticed. An operator override, by contrast, is always a single
+   immediate transition with no confirmation step, because reclaiming
+   control must never be made to wait. Timeouts use the same
+   explicit-`now`/`TICK` discipline as the stage 1 reducer rather
+   than XState's timer-based `after`, so the machine stays
+   deterministic to test. `HandoffPanel.tsx` renders one unambiguous
+   state at a time — never a blended "manual/automatic" indicator.
 3. **Explainable-AI recommendation review console** (not started) —
    a review UI for AI-generated recommendations that makes the
    reasoning inspectable rather than opaque.

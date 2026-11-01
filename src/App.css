@@ -194,3 +194,50 @@ select:focus-visible {
   outline: 2px solid #5b9dff;
   outline-offset: 1px;
 }
+
+.handoff-panel {
+  max-width: 960px;
+  margin: 1.5rem auto 0;
+  padding: 1.5rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.handoff-panel h2 {
+  font-size: 1.1rem;
+  margin: 0 0 0.5rem;
+}
+
+.handoff-state {
+  display: inline-block;
+  padding: 0.4rem 0.75rem;
+  border-radius: 4px;
+  font-weight: 600;
+  margin: 0 0 1rem;
+}
+
+.handoff-state-manual {
+  background: #16331f;
+  color: #7fe0a0;
+}
+
+.handoff-state-automatic {
+  background: #163049;
+  color: #7fc4ff;
+}
+
+.handoff-state-automationPending,
+.handoff-state-manualPending {
+  background: #3a2a06;
+  color: #ffd79a;
+}
+
+.handoff-state-failsafe {
+  background: #3a0606;
+  color: #ff9a9a;
+}
+
+.handoff-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
