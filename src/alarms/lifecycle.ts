@@ -45,17 +45,31 @@ export function createInitialAlarmState(): AlarmSystemState {
   return { board: new Map(), recentRaiseTimestamps: [] };
 }
 
+/** `timestamps` is always in ascending order -- RAISE events only ever
+ * append with a `now` that's >= every prior one -- so finding the
+ * cutoff point is a binary search (O(log n)) rather than a linear
+ * scan. Matters once a board is tracking hundreds of tags under a
+ * real flood; at demo scale either approach is instant. */
+function firstIndexAtOrAfter(timestamps: readonly number[], cutoff: number): number {
+  let lo = 0;
+  let hi = timestamps.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (timestamps[mid] < cutoff) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
 function countInWindow(timestamps: readonly number[], now: number, windowMs: number): number {
   const cutoff = now - windowMs;
-  let count = 0;
-  for (const t of timestamps) if (t >= cutoff) count++;
-  return count;
+  return timestamps.length - firstIndexAtOrAfter(timestamps, cutoff);
 }
 
 function pruneOld(timestamps: readonly number[], now: number, windowMs: number): readonly number[] {
   const cutoff = now - windowMs;
-  const pruned = timestamps.filter((t) => t >= cutoff);
-  return pruned.length === timestamps.length ? timestamps : pruned;
+  const firstKept = firstIndexAtOrAfter(timestamps, cutoff);
+  return firstKept === 0 ? timestamps : timestamps.slice(firstKept);
 }
 
 /** True if the system is currently in a flood condition -- exposed

@@ -8,6 +8,8 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "start:server": "node server/server.mjs",
     "check-bundle-budget": "node scripts/check-bundle-budget.mjs",
     "preview": "vite preview"
   },
@@ -28,6 +30,7 @@
     "@types/react-window": "^1.8.8",
     "@types/ws": "^8.18.2",
     "@vitejs/plugin-react": "^6.1.2",
+    "@vitest/coverage-v8": "^5.0.5",
     "@vitest/ui": "^5.0.5",
     "fast-check": "^4.10.2",
     "jest-axe": "^11.0.0",

@@ -29,16 +29,18 @@ jobs:
       - name: Type check
         run: npx tsc -b
 
-      # Runs the full suite: lifecycle unit tests, the two
-      # fast-check property suites (shelve-survives-re-trip,
-      # flood-never-touches-high/critical), and the AlarmConsole
-      # component tests -- including the jest-axe accessibility
-      # checks. There is no separate "accessibility gate" job: the
-      # axe assertions are real test assertions, and a violation
-      # fails this step like any other failing test, which is a
-      # harder gate than a non-blocking report would be.
-      - name: Test (incl. accessibility assertions)
-        run: npm run test
+      # Runs the full suite: lifecycle unit tests, the two fast-check
+      # property suites (shelve-survives-re-trip,
+      # flood-never-touches-high/critical), the AlarmConsole component
+      # tests (incl. jest-axe accessibility checks), and the backend
+      # server's REST + WebSocket tests -- then fails the build if
+      # coverage drops below the floor set in vite.config.ts. There is
+      # no separate "accessibility gate" job: the axe assertions are
+      # real test assertions, and a violation fails this step like any
+      # other failing test, which is a harder gate than a non-blocking
+      # report would be.
+      - name: Test with coverage gate (incl. accessibility + backend tests)
+        run: npm run test:coverage
 
       - name: Build
         run: npm run build
