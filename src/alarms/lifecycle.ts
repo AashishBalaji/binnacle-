@@ -73,7 +73,7 @@ export function isFlooding(
  * manual unshelve, shelf expiry, or an early re-trip. If the
  * condition already cleared while shelved, it resolves straight to
  * CLEARED rather than flashing back into UNACK first. */
-function resolveUnshelve(inst: AlarmInstance, now: number): AlarmInstance {
+function resolveUnshelve(inst: AlarmInstance): AlarmInstance {
   if (inst.clearedAt !== undefined) {
     return { ...inst, state: "CLEARED", shelf: undefined };
   }
@@ -143,22 +143,20 @@ export function reduceAlarm(
     case "UNSHELVE": {
       const existing = state.board.get(event.tag);
       if (!existing || existing.state !== "SHELVED") return state;
-      return { ...state, board: withInstance(state.board, event.tag, resolveUnshelve(existing, event.now)) };
+      return { ...state, board: withInstance(state.board, event.tag, resolveUnshelve(existing)) };
     }
 
     case "TICK": {
-      let board = state.board;
-      let boardChanged = false;
+      let mutableBoard: Map<string, AlarmInstance> | null = null;
       for (const [tag, inst] of state.board) {
         if (inst.state === "SHELVED" && inst.shelf && event.now >= inst.shelf.expiresAt) {
-          if (!boardChanged) board = new Map(state.board);
-          board.set(tag, resolveUnshelve(inst, event.now));
-          boardChanged = true;
+          if (!mutableBoard) mutableBoard = new Map(state.board);
+          mutableBoard.set(tag, resolveUnshelve(inst));
         }
       }
       const prunedTimestamps = pruneOld(state.recentRaiseTimestamps, event.now, options.windowMs);
-      if (!boardChanged && prunedTimestamps === state.recentRaiseTimestamps) return state;
-      return { board, recentRaiseTimestamps: prunedTimestamps };
+      if (!mutableBoard && prunedTimestamps === state.recentRaiseTimestamps) return state;
+      return { board: mutableBoard ?? state.board, recentRaiseTimestamps: prunedTimestamps };
     }
 
     default: {
