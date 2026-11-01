@@ -4,9 +4,15 @@
  * pure function of (state, event, now); this hook's job is just to
  * supply `now`, run a periodic TICK so shelf expiry and flood decay
  * actually happen, and expose a small dispatch surface the UI calls.
+ *
+ * `now` is read from `performance.now()` only inside event handlers
+ * and the tick effect -- never during render -- so the component
+ * stays a pure function of its state for React's purposes; the
+ * current `now` exposed to the UI is itself just state, updated by
+ * the same tick that drives the reducer's TICK event.
  */
 
-import { useCallback, useEffect, useReducer, useRef } from "react";
+import { useCallback, useEffect, useReducer, useState } from "react";
 import { createInitialAlarmState, DEFAULT_FLOOD_OPTIONS, isFlooding, reduceAlarm } from "./lifecycle";
 import type { AlarmSystemState, FloodOptions } from "./lifecycle";
 import type { AlarmEvent, AlarmPriority } from "./types";
@@ -32,39 +38,46 @@ export interface UseAlarmSystemResult {
  * clock milliseconds since page load, which is all the reducer needs
  * -- it never cares about absolute dates, only relative ordering and
  * durations. */
-export function useAlarmSystem(floodOptions: FloodOptions = DEFAULT_FLOOD_OPTIONS) {
+export function useAlarmSystem(floodOptions: FloodOptions = DEFAULT_FLOOD_OPTIONS): UseAlarmSystemResult {
   const [state, dispatch] = useReducer(reducer, undefined, createInitialAlarmState);
-  const startRef = useRef(performance.now());
-  const nowRef = useRef(0);
+  // useState's lazy-initializer form (a function, called exactly once
+  // on mount) is the sanctioned way to run an impure call like
+  // performance.now() during setup without re-running it, or being
+  // flagged as impure, on every render -- unlike useRef's initial-value
+  // argument, which gets evaluated on every render only to be
+  // discarded after the first.
+  const [start] = useState(() => performance.now());
+  const [now, setNow] = useState(0);
 
   useEffect(() => {
     const interval = setInterval(() => {
-      nowRef.current = performance.now() - startRef.current;
-      dispatch({ type: "TICK", now: nowRef.current });
+      const elapsed = performance.now() - start;
+      setNow(elapsed);
+      dispatch({ type: "TICK", now: elapsed });
     }, TICK_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, []);
+  }, [start]);
 
-  const now = () => performance.now() - startRef.current;
+  const readClock = useCallback(() => performance.now() - start, [start]);
 
   const raise = useCallback(
-    (tag: string, priority: "critical" | "high" | "low", description: string) =>
-      dispatch({ type: "RAISE", tag, priority, description, now: now() }),
-    [],
+    (tag: string, priority: AlarmPriority, description: string) =>
+      dispatch({ type: "RAISE", tag, priority, description, now: readClock() }),
+    [readClock],
   );
-  const clear = useCallback((tag: string) => dispatch({ type: "CLEAR", tag, now: now() }), []);
-  const ack = useCallback((tag: string) => dispatch({ type: "ACK", tag, now: now() }), []);
+  const clear = useCallback((tag: string) => dispatch({ type: "CLEAR", tag, now: readClock() }), [readClock]);
+  const ack = useCallback((tag: string) => dispatch({ type: "ACK", tag, now: readClock() }), [readClock]);
   const shelve = useCallback(
     (tag: string, reason: string, durationMs: number) =>
-      dispatch({ type: "SHELVE", tag, reason, durationMs, now: now() }),
-    [],
+      dispatch({ type: "SHELVE", tag, reason, durationMs, now: readClock() }),
+    [readClock],
   );
-  const unshelve = useCallback((tag: string) => dispatch({ type: "UNSHELVE", tag, now: now() }), []);
+  const unshelve = useCallback((tag: string) => dispatch({ type: "UNSHELVE", tag, now: readClock() }), [readClock]);
 
   return {
     state,
-    now: now(),
-    flooding: isFlooding(state, now(), floodOptions),
+    now,
+    flooding: isFlooding(state, now, floodOptions),
     raise,
     clear,
     ack,

@@ -89,13 +89,16 @@ describe("property: shelve survives re-trip", () => {
 
           state = reduceAlarm(state, event, DEFAULT_FLOOD_OPTIONS);
 
-          if (event.type === "RAISE" && wasShelved) {
-            const after = state.board.get(event.tag);
-            // The invariant: re-raising a shelved alarm always forces
-            // it back into view, whatever was left on the shelf timer.
-            expect(after?.state).toBe("UNACK");
-            expect(after?.shelf).toBeUndefined();
-          }
+          // The invariant, expressed as an implication rather than a
+          // conditional expect (so the assertion always runs, and a
+          // sequence that never exercises the re-trip case can't
+          // silently pass without checking anything): if this step
+          // was a RAISE on a previously-SHELVED tag, the alarm must
+          // now be UNACK with no shelf, whatever was left on the timer.
+          const after = event.type === "RAISE" ? state.board.get(event.tag) : undefined;
+          const reTripInvariantHolds =
+            !(event.type === "RAISE" && wasShelved) || (after?.state === "UNACK" && after?.shelf === undefined);
+          expect(reTripInvariantHolds).toBe(true);
         }
         // And at the end, no instance should be stuck SHELVED with a
         // clearedAt in the past and an already-elapsed expiry unless
@@ -116,9 +119,10 @@ describe("property: flood suppression never touches high/critical", () => {
         for (const event of events) {
           state = reduceAlarm(state, event, TIGHT_FLOOD_OPTIONS);
           for (const inst of state.board.values()) {
-            if (inst.state === "SUPPRESSED") {
-              expect(inst.priority).toBe("low");
-            }
+            // Same implication-style assertion as above: unconditional
+            // expect, with the precondition folded into the boolean.
+            const neverSuppressesNonLow = inst.state !== "SUPPRESSED" || inst.priority === "low";
+            expect(neverSuppressesNonLow).toBe(true);
           }
         }
         return true;

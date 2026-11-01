@@ -41,7 +41,6 @@ export function ShelveForm({ tag, onSubmit, onCancel }: ShelveFormProps) {
         value={reason}
         onChange={(event) => setReason(event.target.value)}
         required
-        autoFocus
       />
       <label htmlFor={durationId}>Shelve duration</label>
       <select id={durationId} value={durationMs} onChange={(event) => setDurationMs(Number(event.target.value))}>
