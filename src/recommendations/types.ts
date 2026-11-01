@@ -49,10 +49,13 @@ export interface Recommendation {
    * decision made on the previous one. */
   readonly raisedAt: number;
   readonly generatedAt: number;
-  /** Only present when action === "SHELVE" -- the duration that would
-   * be applied if the operator accepts as-is, same units
-   * (`lifecycle.ts`'s SHELVE event) as the rest of the app. */
+  /** Both only present when action === "SHELVE". These pre-fill the
+   * real ShelveForm (AlarmConsole.tsx) rather than being applied
+   * silently -- accepting a SHELVE recommendation opens that form
+   * with these as the starting, still-editable values, the same
+   * confirmation step a manually-initiated shelve already requires. */
   readonly suggestedShelveDurationMs?: number;
+  readonly suggestedShelveReason?: string;
   readonly priority: AlarmPriority;
 }
 

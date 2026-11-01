@@ -16,13 +16,21 @@
 import { useCallback, useState } from "react";
 import type { Recommendation, RecommendationDecision, RecommendationReviewRecord } from "./types";
 
-/** A recommendation is identified by its alarm's tag AND the
- * excursion it was generated for (`raisedAt`) -- not tag alone. If
- * the same tag alarms again later, that's a new excursion and
- * deserves a fresh review, independent of whatever was decided about
- * the previous one. */
-function reviewKey(tag: string, raisedAt: number): string {
-  return `${tag}@${raisedAt}`;
+/** A recommendation is identified by its alarm's tag, the excursion
+ * it was generated for (`raisedAt`), AND the specific action being
+ * recommended -- not tag+excursion alone. Keying on tag+excursion
+ * only was a real bug: an operator who reasonably rejects an early,
+ * low-confidence "Acknowledge" on a fresh alarm would permanently
+ * silence that excursion from ever being recommended again -- including
+ * a later, genuinely more urgent "Escalate" once the same alarm ages
+ * past its escalation threshold. A rejected (or accepted) ACKNOWLEDGE
+ * must not suppress a later ESCALATE on the same excursion; only a
+ * repeat of the *same* recommendation should stay silenced. This
+ * mirrors stage 1's own rule that a SHELVED alarm's suppression never
+ * survives a genuinely new fact (a re-trip) -- a review decision here
+ * shouldn't survive a genuinely new recommendation either. */
+function reviewKey(tag: string, raisedAt: number, action: Recommendation["action"]): string {
+  return `${tag}@${raisedAt}:${action}`;
 }
 
 export interface UseRecommendationReviewResult {
@@ -34,7 +42,7 @@ export interface UseRecommendationReviewResult {
     now: number,
     note?: string,
   ) => void;
-  readonly isReviewed: (tag: string, raisedAt: number) => boolean;
+  readonly isReviewed: (recommendation: Recommendation) => boolean;
 }
 
 export function useRecommendationReview(): UseRecommendationReviewResult {
@@ -43,7 +51,7 @@ export function useRecommendationReview(): UseRecommendationReviewResult {
 
   const recordDecision = useCallback(
     (recommendation: Recommendation, decision: RecommendationDecision, now: number, note?: string) => {
-      const key = reviewKey(recommendation.tag, recommendation.raisedAt);
+      const key = reviewKey(recommendation.tag, recommendation.raisedAt, recommendation.action);
       setReviewedKeys((prev) => (prev.has(key) ? prev : new Set(prev).add(key)));
       const record: RecommendationReviewRecord = {
         tag: recommendation.tag,
@@ -59,7 +67,8 @@ export function useRecommendationReview(): UseRecommendationReviewResult {
   );
 
   const isReviewed = useCallback(
-    (tag: string, raisedAt: number) => reviewedKeys.has(reviewKey(tag, raisedAt)),
+    (recommendation: Recommendation) =>
+      reviewedKeys.has(reviewKey(recommendation.tag, recommendation.raisedAt, recommendation.action)),
     [reviewedKeys],
   );
 

@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState } from "react";
 import { List } from "react-window";
 import { useAlarmSystem } from "../alarms/useAlarmSystem";
 import type { AlarmInstance, AlarmPriority } from "../alarms/types";
-import { generateRecommendations, SUGGESTED_SHELVE_DURATION_MS } from "../recommendations/engine";
+import { generateRecommendations } from "../recommendations/engine";
 import { useRecommendationReview } from "../recommendations/useRecommendationReview";
 import type { Recommendation } from "../recommendations/types";
 import { AlarmRow, type AlarmRowProps } from "./AlarmRow";
@@ -39,6 +39,14 @@ function sortAlarms(alarms: readonly AlarmInstance[]): AlarmInstance[] {
 export function AlarmConsole() {
   const { state, now, flooding, raise, clear, ack, shelve, unshelve } = useAlarmSystem();
   const [shelving, setShelving] = useState<string | null>(null);
+  // Set only when the open ShelveForm was opened by accepting a stage-3
+  // SHELVE recommendation (as opposed to the manual row "Shelve"
+  // button) -- see handleAcceptRecommendation and handleShelveSubmit
+  // below. Pre-fills the form and is what actually records the
+  // "accepted" decision, on submit, not on the initial click: clicking
+  // Accept opens the form for confirmation, it doesn't commit anything
+  // by itself, the same way the manual Shelve button never did either.
+  const [pendingShelveRecommendation, setPendingShelveRecommendation] = useState<Recommendation | null>(null);
 
   const alarms = useMemo(
     () => sortAlarms([...state.board.values()].filter((instance) => VISIBLE_STATES.has(instance.state))),
@@ -50,39 +58,63 @@ export function AlarmConsole() {
     [alarms],
   );
 
-  const handleShelveRequest = useCallback((tag: string) => setShelving(tag), []);
-  const handleShelveSubmit = useCallback(
-    (reason: string, durationMs: number) => {
-      if (shelving) shelve(shelving, reason, durationMs);
-      setShelving(null);
-    },
-    [shelving, shelve],
-  );
+  const handleShelveRequest = useCallback((tag: string) => {
+    setPendingShelveRecommendation(null); // manual request, not a recommendation accept
+    setShelving(tag);
+  }, []);
 
   // Stage 3: the recommendation engine is a pure function of the same
   // (board, now) this component already has -- no second, disconnected
   // copy of the alarm state. `isReviewed` filters out anything the
-  // operator already acted on, so a decision isn't re-prompted every
-  // render; a fresh excursion on the same tag (useRecommendationReview's
-  // tag+raisedAt key) gets a fresh recommendation regardless.
+  // operator already decided on; useRecommendationReview keys that by
+  // tag + excursion + the specific action recommended, so a changed
+  // recommendation on the same alarm (e.g. a rejected ACKNOWLEDGE
+  // later becoming ESCALATE) is never silenced by the earlier decision.
   const { reviews, recordDecision, isReviewed } = useRecommendationReview();
   const recommendations = useMemo(
-    () => generateRecommendations(state.board, now).filter((rec) => !isReviewed(rec.tag, rec.raisedAt)),
+    () => generateRecommendations(state.board, now).filter((rec) => !isReviewed(rec)),
     [state.board, now, isReviewed],
   );
+
+  const handleShelveSubmit = useCallback(
+    (reason: string, durationMs: number) => {
+      if (shelving) shelve(shelving, reason, durationMs);
+      // Only a SHELVE recommendation's form actually records a
+      // decision -- submitting is the confirmation step, not the
+      // earlier Accept click.
+      if (pendingShelveRecommendation) recordDecision(pendingShelveRecommendation, "accepted", now);
+      setShelving(null);
+      setPendingShelveRecommendation(null);
+    },
+    [shelving, shelve, pendingShelveRecommendation, recordDecision, now],
+  );
+
+  const handleCancelShelve = useCallback(() => {
+    // Cancelling records nothing: the recommendation (if any) stays
+    // exactly as un-reviewed as it was before Accept was clicked, so
+    // it's still there to act on later.
+    setShelving(null);
+    setPendingShelveRecommendation(null);
+  }, []);
 
   const handleAcceptRecommendation = useCallback(
     (recommendation: Recommendation) => {
       switch (recommendation.action) {
         case "ACKNOWLEDGE":
           ack(recommendation.tag);
+          recordDecision(recommendation, "accepted", now);
           break;
         case "SHELVE":
-          shelve(
-            recommendation.tag,
-            "Recommended: low-priority, long past acknowledgment",
-            recommendation.suggestedShelveDurationMs ?? SUGGESTED_SHELVE_DURATION_MS,
-          );
+          // Shelving is the highest-stakes accepted action available
+          // here (it suppresses an alarm), so -- unlike ACKNOWLEDGE and
+          // ESCALATE above/below -- accepting it opens the real
+          // ShelveForm, pre-filled with the engine's suggestion, for
+          // the operator to confirm or edit, rather than silently
+          // applying a fixed reason/duration on one click. The
+          // decision is recorded on submit (handleShelveSubmit), not
+          // here.
+          setPendingShelveRecommendation(recommendation);
+          setShelving(recommendation.tag);
           break;
         case "ESCALATE":
           // No real paging/ticketing system sits behind this project
@@ -90,11 +122,11 @@ export function AlarmConsole() {
           // acknowledges the alarm and records the decision below, the
           // same honesty-over-scope choice made everywhere else here.
           ack(recommendation.tag);
+          recordDecision(recommendation, "accepted", now);
           break;
       }
-      recordDecision(recommendation, "accepted", now);
     },
-    [ack, shelve, recordDecision, now],
+    [ack, recordDecision, now],
   );
 
   const handleRejectRecommendation = useCallback(
@@ -119,7 +151,13 @@ export function AlarmConsole() {
       <FloodBanner flooding={flooding} />
 
       {shelving ? (
-        <ShelveForm tag={shelving} onSubmit={handleShelveSubmit} onCancel={() => setShelving(null)} />
+        <ShelveForm
+          tag={shelving}
+          onSubmit={handleShelveSubmit}
+          onCancel={handleCancelShelve}
+          initialReason={pendingShelveRecommendation?.suggestedShelveReason}
+          initialDurationMs={pendingShelveRecommendation?.suggestedShelveDurationMs}
+        />
       ) : null}
 
       <RecommendationPanel

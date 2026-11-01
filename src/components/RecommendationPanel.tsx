@@ -25,15 +25,30 @@ function formatAge(ms: number): string {
  * recommendation engine's suggested actions. The design goal is
  * literally "explainable" -- every recommendation's `<details>`
  * disclosure shows the actual weighted factors the engine summed to
- * reach its confidence, not a restated score. Native `<details>`/
+ * reach its score, not a restated number. Native `<details>`/
  * `<summary>` is used for that disclosure rather than a custom
  * expand/collapse widget, the same reasoning as ShelveForm's inline
  * (non-modal) form: it's keyboard- and screen-reader-operable with no
- * extra ARIA work. */
+ * extra ARIA work.
+ *
+ * Deliberately NOT called "confidence" anywhere a person can see it
+ * without opening the "Why?" disclosure: a percentage next to a
+ * horizontal bar reads as a calibrated model's probability output,
+ * which this engine does not produce (it's a hand-weighted rule sum
+ * -- see engine.ts's docstring). The visible label below carries that
+ * distinction forward from the code into the rendered page itself,
+ * since a reviewer of the running app, not just the source, should be
+ * able to tell the difference without digging. */
 export function RecommendationPanel({ recommendations, now, onAccept, onReject }: RecommendationPanelProps) {
   return (
     <section className="recommendation-panel" aria-label="Recommended actions">
       <h2>Recommended actions</h2>
+      {recommendations.length > 0 ? (
+        <p className="recommendation-disclosure">
+          Rule-based scores, not predictions from a trained model — expand "Why?" on any item for the exact
+          weights behind the number.
+        </p>
+      ) : null}
       {recommendations.length === 0 ? (
         <p className="recommendation-empty">No recommendations right now.</p>
       ) : (
@@ -64,18 +79,24 @@ function RecommendationItem({ recommendation, now, onAccept, onReject }: Recomme
   const [rejecting, setRejecting] = useState(false);
   const [note, setNote] = useState("");
   const noteId = useId();
-  const confidencePct = Math.round(recommendation.confidence * 100);
+  // Internally this is still `confidence` (engine.ts/types.ts) -- a
+  // legitimate name for "the clamped sum of this recommendation's
+  // factor weights" as a piece of domain data. What changes here is
+  // only how it's presented: never the word "confidence" in anything
+  // rendered, so the screen can't be read as claiming more certainty
+  // than a rule sum actually has.
+  const scorePct = Math.round(recommendation.confidence * 100);
 
   return (
     <li className={`recommendation-item priority-${recommendation.priority}`} data-testid="recommendation-item">
       <div className="recommendation-summary">
         <span className="recommendation-tag">{recommendation.tag}</span>
         <span className="recommendation-action">{ACTION_LABEL[recommendation.action]}</span>
-        <span className="recommendation-confidence">
-          <span className="recommendation-confidence-bar" aria-hidden="true">
-            <span className="recommendation-confidence-fill" style={{ width: `${confidencePct}%` }} />
+        <span className="recommendation-score">
+          <span className="recommendation-score-bar" aria-hidden="true">
+            <span className="recommendation-score-fill" style={{ width: `${scorePct}%` }} />
           </span>
-          {confidencePct}% confidence
+          {scorePct}% score
         </span>
       </div>
 

@@ -306,7 +306,13 @@ select:focus-visible {
   letter-spacing: 0.02em;
 }
 
-.recommendation-confidence {
+.recommendation-disclosure {
+  color: var(--color-muted);
+  font-size: 0.8rem;
+  margin: 0 0 0.6rem;
+}
+
+.recommendation-score {
   display: flex;
   align-items: center;
   gap: 0.4rem;
@@ -315,7 +321,7 @@ select:focus-visible {
   font-size: 0.82rem;
 }
 
-.recommendation-confidence-bar {
+.recommendation-score-bar {
   display: inline-block;
   width: 64px;
   height: 6px;
@@ -324,7 +330,7 @@ select:focus-visible {
   overflow: hidden;
 }
 
-.recommendation-confidence-fill {
+.recommendation-score-fill {
   display: block;
   height: 100%;
   background: #5b9dff;

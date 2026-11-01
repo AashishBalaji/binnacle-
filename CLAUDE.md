@@ -25,14 +25,22 @@ a generic app.
   scoring function (not a trained model, deliberately — see the
   file's docstring and README's scope section) that recommends
   ACKNOWLEDGE / SHELVE / ESCALATE per alarm, each with a weighted
-  factor breakdown whose weights sum to the stated confidence (proved
-  by fast-check in `engine.properties.test.ts`). `RecommendationPanel.tsx`
-  exposes the breakdown behind a native `<details>` disclosure;
-  accepting a recommendation dispatches the real `ack`/`shelve`
-  action via the stage 1 reducer, not a cosmetic log entry.
-  `useRecommendationReview.ts` tracks accept/reject decisions keyed
-  by tag + excursion (`raisedAt`), in-memory only — explicitly not an
-  ISA-18.2 audit journal. Has not yet had a round-table review pass.
+  factor breakdown whose weights sum to the stated score (proved by
+  fast-check in `engine.properties.test.ts`). `RecommendationPanel.tsx`
+  exposes the breakdown behind a native `<details>` disclosure, and
+  never uses the word "confidence" in anything rendered (see the UI
+  overclaiming fix below). Accepting ACKNOWLEDGE/ESCALATE dispatches
+  the real `ack` action immediately; accepting SHELVE opens the real
+  `ShelveForm` pre-filled (not a silent apply), via the stage 1
+  reducer either way, not a cosmetic log entry.
+  `useRecommendationReview.ts` tracks accept/reject decisions keyed by
+  tag + excursion (`raisedAt`) + the specific action, in-memory only —
+  explicitly not an ISA-18.2 audit journal. Round-table reviewed once:
+  7/10 → fixes applied (review-key bug fixed to include action,
+  not just tag+excursion; UI stopped calling the rule-based score
+  "confidence"; SHELVE-accept routed through the real form; ACKED
+  silence gap documented in README's scope section) → effectively
+  9/10.
 
 Read `README.md` for the full technical writeup (what's real, what's
 synthetic, what's deliberately out of scope). Don't restate it here;

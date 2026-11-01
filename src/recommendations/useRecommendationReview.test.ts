@@ -21,14 +21,15 @@ describe("useRecommendationReview", () => {
   it("starts with nothing reviewed", () => {
     const { result } = renderHook(() => useRecommendationReview());
     expect(result.current.reviews).toEqual([]);
-    expect(result.current.isReviewed("TT-1", 0)).toBe(false);
+    expect(result.current.isReviewed(makeRecommendation())).toBe(false);
   });
 
-  it("records an accepted decision and marks the excursion reviewed", () => {
+  it("records an accepted decision and marks that recommendation reviewed", () => {
     const { result } = renderHook(() => useRecommendationReview());
-    act(() => result.current.recordDecision(makeRecommendation(), "accepted", 1_000));
+    const rec = makeRecommendation();
+    act(() => result.current.recordDecision(rec, "accepted", 1_000));
 
-    expect(result.current.isReviewed("TT-1", 0)).toBe(true);
+    expect(result.current.isReviewed(rec)).toBe(true);
     expect(result.current.reviews).toHaveLength(1);
     expect(result.current.reviews[0]).toMatchObject({
       tag: "TT-1",
@@ -49,8 +50,35 @@ describe("useRecommendationReview", () => {
     const { result } = renderHook(() => useRecommendationReview());
     act(() => result.current.recordDecision(makeRecommendation({ raisedAt: 0 }), "accepted", 1_000));
 
-    expect(result.current.isReviewed("TT-1", 0)).toBe(true);
-    expect(result.current.isReviewed("TT-1", 5_000)).toBe(false);
+    expect(result.current.isReviewed(makeRecommendation({ raisedAt: 0 }))).toBe(true);
+    expect(result.current.isReviewed(makeRecommendation({ raisedAt: 5_000 }))).toBe(false);
+  });
+
+  it("a DIFFERENT action on the SAME excursion is NOT already reviewed -- the bug this hook used to have", () => {
+    // Regression test for the round-table finding: rejecting an early,
+    // low-confidence ACKNOWLEDGE on a fresh alarm must not permanently
+    // silence that excursion -- a later, genuinely more urgent ESCALATE
+    // on the same tag/raisedAt still needs to be shown and reviewed on
+    // its own, exactly as if nothing had been decided before.
+    const { result } = renderHook(() => useRecommendationReview());
+    const ackRec = makeRecommendation({ tag: "TT-204", raisedAt: 0, action: "ACKNOWLEDGE" });
+    act(() => result.current.recordDecision(ackRec, "rejected", 1_000));
+
+    expect(result.current.isReviewed(ackRec)).toBe(true);
+
+    const escalateRec = makeRecommendation({ tag: "TT-204", raisedAt: 0, action: "ESCALATE" });
+    expect(result.current.isReviewed(escalateRec)).toBe(false);
+  });
+
+  it("re-recommending the SAME action on the SAME excursion stays reviewed (no repeat prompt)", () => {
+    const { result } = renderHook(() => useRecommendationReview());
+    const rec = makeRecommendation({ tag: "TT-1", raisedAt: 0, action: "ACKNOWLEDGE", confidence: 0.3 });
+    act(() => result.current.recordDecision(rec, "rejected", 1_000));
+
+    // Same tag, same excursion, same action -- just a later, higher
+    // confidence snapshot of the same recommendation. Still reviewed.
+    const laterSameAction = makeRecommendation({ tag: "TT-1", raisedAt: 0, action: "ACKNOWLEDGE", confidence: 0.6 });
+    expect(result.current.isReviewed(laterSameAction)).toBe(true);
   });
 
   it("keeps newest decision first in the log", () => {

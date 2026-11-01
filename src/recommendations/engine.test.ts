@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { generateRecommendations, SHELVE_CANDIDATE_AGE_MS, SUGGESTED_SHELVE_DURATION_MS } from "./engine";
+import { generateRecommendations, SHELVE_CANDIDATE_AGE_MS, SUGGESTED_SHELVE_DURATION_MS, SUGGESTED_SHELVE_REASON } from "./engine";
 import type { AlarmBoard, AlarmInstance } from "../alarms/types";
 
 function boardOf(...instances: AlarmInstance[]): AlarmBoard {
@@ -110,6 +110,7 @@ describe("generateRecommendations: ACKED alarms", () => {
     const rec = generateRecommendations(boardOf(inst), SHELVE_CANDIDATE_AGE_MS)[0];
     expect(rec.action).toBe("SHELVE");
     expect(rec.suggestedShelveDurationMs).toBe(SUGGESTED_SHELVE_DURATION_MS);
+    expect(rec.suggestedShelveReason).toBe(SUGGESTED_SHELVE_REASON);
   });
 });
 

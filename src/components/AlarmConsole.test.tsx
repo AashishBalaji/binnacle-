@@ -201,13 +201,14 @@ describe("AlarmConsole", () => {
     expect(within(log).getByText(/escalate/)).toBeInTheDocument();
   }, 10_000);
 
-  it("accepting a SHELVE recommendation shelves the alarm with the suggested duration and logs it", async () => {
+  it("accepting a SHELVE recommendation opens the real ShelveForm pre-filled, rather than shelving on one click", async () => {
     const user = userEvent.setup();
     const nowSpy = vi.spyOn(performance, "now").mockReturnValue(0);
     render(<AlarmConsole />);
 
     await user.click(screen.getByRole("button", { name: "Raise low" }));
     const row = screen.getByTestId("alarm-row");
+    const tagText = within(row).getByText(/^DEMO-LOW-/).textContent ?? "";
     await user.click(within(row).getByRole("button", { name: /^Acknowledge/ }));
 
     nowSpy.mockReturnValue(20 * 60_000); // past the 15-minute shelve-candidate age
@@ -217,8 +218,43 @@ describe("AlarmConsole", () => {
 
     await user.click(within(panel).getByRole("button", { name: /^Accept recommendation for/ }));
 
-    expect(within(row).getByText(/Shelved/)).toBeInTheDocument();
+    // One click on Accept must NOT have shelved anything yet -- it
+    // opens the same form a manual shelve uses, pre-filled, for the
+    // operator to confirm or edit.
+    expect(within(row).getByText("Acknowledged")).toBeInTheDocument();
+    const form = screen.getByRole("form", { name: `Shelve ${tagText}` });
+    expect(within(form).getByLabelText(/Reason for shelving/)).toHaveValue(
+      "Low-priority, acknowledged well past the point of re-acknowledgment -- recommended by the review engine.",
+    );
+    expect(within(form).getByRole("combobox")).toHaveValue(String(60 * 60_000));
+
+    await user.click(within(form).getByRole("button", { name: "Confirm shelve" }));
+
+    expect(within(screen.getByTestId("alarm-row")).getByText(/Shelved/)).toBeInTheDocument();
     const log = screen.getByRole("region", { name: "Recommendation review log" });
     expect(within(log).getByText(/shelve/)).toBeInTheDocument();
+    expect(within(log).getByText("accepted")).toBeInTheDocument();
+  }, 10_000);
+
+  it("cancelling the pre-filled ShelveForm records no decision, so the recommendation is still there to act on", async () => {
+    const user = userEvent.setup();
+    const nowSpy = vi.spyOn(performance, "now").mockReturnValue(0);
+    render(<AlarmConsole />);
+
+    await user.click(screen.getByRole("button", { name: "Raise low" }));
+    const row = screen.getByTestId("alarm-row");
+    await user.click(within(row).getByRole("button", { name: /^Acknowledge/ }));
+    nowSpy.mockReturnValue(20 * 60_000);
+
+    const panel = screen.getByRole("region", { name: "Recommended actions" });
+    await waitFor(() => expect(within(panel).getByText("Shelve")).toBeInTheDocument(), { timeout: 2000 });
+    await user.click(within(panel).getByRole("button", { name: /^Accept recommendation for/ }));
+
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+    expect(screen.queryByRole("form")).not.toBeInTheDocument();
+    expect(within(screen.getByTestId("alarm-row")).getByText("Acknowledged")).toBeInTheDocument(); // untouched
+    expect(within(panel).getByText("Shelve")).toBeInTheDocument(); // recommendation still pending
+    expect(screen.queryByRole("region", { name: "Recommendation review log" })).not.toBeInTheDocument();
   }, 10_000);
 });

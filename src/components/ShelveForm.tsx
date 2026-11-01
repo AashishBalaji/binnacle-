@@ -4,6 +4,13 @@ export interface ShelveFormProps {
   readonly tag: string;
   readonly onSubmit: (reason: string, durationMs: number) => void;
   readonly onCancel: () => void;
+  /** Pre-fills the form -- used when this form was opened by accepting
+   * a stage-3 SHELVE recommendation, so the engine's suggested reason
+   * and duration appear as an editable starting point rather than
+   * being silently applied with no confirmation step. Both fields stay
+   * fully editable; these are just the initial values. */
+  readonly initialReason?: string;
+  readonly initialDurationMs?: number;
 }
 
 const DURATION_OPTIONS = [
@@ -18,9 +25,9 @@ const DURATION_OPTIONS = [
  * ordinary page content the moment it appears -- simpler to get
  * right than a dialog, and shelving is a deliberate, low-frequency
  * action where that trade-off is the right one. */
-export function ShelveForm({ tag, onSubmit, onCancel }: ShelveFormProps) {
-  const [reason, setReason] = useState("");
-  const [durationMs, setDurationMs] = useState<number>(DURATION_OPTIONS[0].ms);
+export function ShelveForm({ tag, onSubmit, onCancel, initialReason, initialDurationMs }: ShelveFormProps) {
+  const [reason, setReason] = useState(initialReason ?? "");
+  const [durationMs, setDurationMs] = useState<number>(initialDurationMs ?? DURATION_OPTIONS[0].ms);
   const reasonId = useId();
   const durationId = useId();
 

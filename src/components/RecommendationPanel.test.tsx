@@ -31,15 +31,34 @@ describe("RecommendationPanel", () => {
     expect(await axe(container)).toHaveNoViolations();
   });
 
-  it("renders a recommendation with its action, confidence, and rationale, with no accessibility violations", async () => {
+  it("renders a recommendation with its action, score, and rationale, with no accessibility violations", async () => {
     const { container } = render(
       <RecommendationPanel recommendations={[makeRecommendation()]} now={1_000} onAccept={vi.fn<(recommendation: Recommendation) => void>()} onReject={vi.fn<(recommendation: Recommendation, note?: string) => void>()} />,
     );
     expect(screen.getByText("TT-204")).toBeInTheDocument();
     expect(screen.getByText("Acknowledge")).toBeInTheDocument();
-    expect(screen.getByText("72% confidence")).toBeInTheDocument();
+    expect(screen.getByText("72% score")).toBeInTheDocument();
     expect(screen.getByText("High alarm unacknowledged for 3m 0s.")).toBeInTheDocument();
     expect(await axe(container)).toHaveNoViolations();
+  });
+
+  it("never renders the word 'confidence' -- a rule-based score must not read as a calibrated probability", () => {
+    // Regression test for the round-table finding: the rendered page,
+    // not just engine.ts's docstring, must carry forward that this is
+    // a hand-weighted rule sum, not model output. Checking the whole
+    // container's text content (not a specific node) is deliberate --
+    // this should hold no matter where the word might sneak back in.
+    const { container } = render(
+      <RecommendationPanel recommendations={[makeRecommendation()]} now={1_000} onAccept={vi.fn<(recommendation: Recommendation) => void>()} onReject={vi.fn<(recommendation: Recommendation, note?: string) => void>()} />,
+    );
+    expect(container.textContent?.toLowerCase()).not.toContain("confidence");
+  });
+
+  it("shows a visible disclosure that scores are rule-based, without needing to open any disclosure triangle", () => {
+    render(
+      <RecommendationPanel recommendations={[makeRecommendation()]} now={1_000} onAccept={vi.fn<(recommendation: Recommendation) => void>()} onReject={vi.fn<(recommendation: Recommendation, note?: string) => void>()} />,
+    );
+    expect(screen.getByText(/Rule-based scores, not predictions from a trained model/)).toBeVisible();
   });
 
   it("the Why disclosure reveals the actual weighted factors, not just the score", async () => {

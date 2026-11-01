@@ -64,9 +64,12 @@ on each.
   stage 3 — see roadmap below) that reviews the current board and
   suggests Acknowledge / Shelve / Escalate actions, each with a
   weighted-factor breakdown an operator can expand and read, not a
-  bare confidence number. Accepting a recommendation applies the real
-  alarm action (`ack`/`shelve`) through the same lifecycle reducer as
-  the manual row buttons.
+  bare score. Accepting Acknowledge or Escalate applies the real
+  `ack` action immediately, through the same lifecycle reducer as the
+  manual row buttons; accepting Shelve opens that same reducer's
+  action through the real `ShelveForm`, pre-filled but still editable,
+  since suppressing an alarm is the highest-stakes action this panel
+  can trigger.
 
 ## What's synthetic
 
@@ -101,6 +104,15 @@ mistaken for real industrial data.
   Accepting an ESCALATE recommendation acknowledges the alarm and
   records the decision in the (in-memory, non-persistent) review log
   — nothing is actually paged or ticketed.
+- Stage 3's engine goes silent on any ACKED alarm except the one
+  low-priority "nuisance" case it recognizes (open well past
+  acknowledgment — see the roadmap below). A HIGH or CRITICAL alarm
+  that's been acknowledged but never actually cleared, however long
+  that takes, gets no further recommendation of any kind — this
+  project doesn't model "resolved" separately from "acknowledged," so
+  the engine has nothing further to say about it. A real system would
+  likely want a reminder/re-escalation path for exactly that case;
+  this one deliberately doesn't claim to have one.
 
 ## Running it
 
@@ -156,22 +168,48 @@ than a scaffold for the next one:
    low priority, the same severity-gating principle as stage 1's flood
    suppression), and SHELVE (a low-priority alarm still active well
    past acknowledgment — the classic ISA-18.2 nuisance-alarm pattern).
-   Every recommendation's `confidence` is the clamped sum of its own
-   `factors[].weight`, so the breakdown `RecommendationPanel.tsx`
-   shows behind a native `<details>`/`<summary>` disclosure always
-   adds up to the number an operator is being asked to trust — proved
-   for arbitrary boards by `engine.properties.test.ts`'s fast-check
-   invariants, the same generative-testing discipline as stages 1 and
-   2. Accepting a recommendation dispatches the real `ack`/`shelve`
-   action (ESCALATE also acks — see the scope note above on why);
-   rejecting just records the decision. `useRecommendationReview.ts`
-   keys each decision by tag *and* the alarm excursion's `raisedAt`,
-   so a later re-raise of the same tag is reviewed fresh rather than
-   silently reusing a stale decision — mirroring stage 1's "one
-   instance per excursion" rule. The review log this hook keeps is
-   explicitly not an ISA-18.2 audit journal (see scope above):
+   Every recommendation's `confidence` field is the clamped sum of its
+   own `factors[].weight`, so the breakdown `RecommendationPanel.tsx`
+   shows behind a native `<details>`/`<summary>` disclosure always adds
+   up to the number — proved for arbitrary boards by
+   `engine.properties.test.ts`'s fast-check invariants, the same
+   generative-testing discipline as stages 1 and 2. The rendered page
+   itself never calls that number "confidence," though, and shows a
+   visible (not just inside `<details>`) one-line disclosure that it's
+   a rule-based score rather than a trained model's prediction — a
+   label like "confidence" next to a percentage and a bar reads as a
+   calibrated probability regardless of how honest the surrounding code
+   comments are, so the honesty has to be in the UI copy itself, not
+   just the source.
+
+   Accepting ACKNOWLEDGE or ESCALATE dispatches the real `ack` action
+   immediately (ESCALATE also acks — see the scope note above on why).
+   Accepting SHELVE is different: shelving suppresses an alarm, the
+   highest-stakes action available here, so Accept opens the real
+   `ShelveForm` — pre-filled with the engine's suggested reason and
+   duration, but still fully editable — rather than silently applying
+   those defaults on one click; the decision is only recorded once the
+   operator actually confirms the form (or not at all, if they cancel).
+   Rejecting a recommendation just records the decision.
+   `useRecommendationReview.ts` keys each decision by tag, the alarm
+   excursion's `raisedAt`, *and* the specific action recommended — not
+   tag+excursion alone, which was a real bug caught in this stage's
+   round-table review: keying on tag+excursion only meant rejecting an
+   early, low-confidence ACKNOWLEDGE on a fresh alarm would silently
+   suppress a later, genuinely more urgent ESCALATE recommendation on
+   that same excursion. Fixed the same way stage 1 handles a shelved
+   alarm that re-trips: a new fact (here, a changed recommendation)
+   always gets a fresh chance to surface, regardless of what was
+   decided about an earlier, different one. The review log this hook
+   keeps is explicitly not an ISA-18.2 audit journal (see scope above):
    in-memory only, lost on refresh, there only so a reviewer can see
    what was decided and why while the page is open.
+
+   Round-table reviewed once: 7/10 → four fixes applied (the
+   review-key bug above; the UI "confidence" wording; SHELVE-accept
+   routed through the real form instead of applying silently; the
+   ACKED-priority scope gap above added to this section) → effectively
+   9/10.
 
 ## CI
 

@@ -66,8 +66,13 @@ const SHELVE_BASE_WEIGHT = 0.5;
 const SHELVE_AGE_MAX_WEIGHT = 0.3;
 const SHELVE_AGE_REFERENCE_MS = 30 * 60_000;
 /** Default shelve duration suggested alongside a SHELVE recommendation
- * -- applied as-is if the operator accepts without editing it. */
-export const SUGGESTED_SHELVE_DURATION_MS = 30 * 60_000;
+ * -- pre-fills the real ShelveForm (see AlarmConsole.tsx) rather than
+ * being applied silently, so it must be one of ShelveForm's own
+ * DURATION_OPTIONS values, not an arbitrary number the dropdown can't
+ * actually represent. 1 hour is the shortest of those options long
+ * enough to be worth a round trip through the form at all. */
+export const SUGGESTED_SHELVE_DURATION_MS = 60 * 60_000;
+export const SUGGESTED_SHELVE_REASON = "Low-priority, acknowledged well past the point of re-acknowledgment -- recommended by the review engine.";
 
 function clamp01(value: number): number {
   return Math.max(0, Math.min(1, value));
@@ -87,13 +92,18 @@ function formatDuration(ms: number): string {
   return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
 }
 
+interface SuggestedShelveParams {
+  readonly suggestedShelveDurationMs: number;
+  readonly suggestedShelveReason: string;
+}
+
 function buildRecommendation(
   inst: AlarmInstance,
   now: number,
   action: RecommendedAction,
   rationale: string,
   factors: readonly RecommendationFactor[],
-  suggestedShelveDurationMs?: number,
+  suggestedShelve?: SuggestedShelveParams,
 ): Recommendation {
   const confidence = clamp01(factors.reduce((sum, f) => sum + f.weight, 0));
   return {
@@ -105,7 +115,7 @@ function buildRecommendation(
     raisedAt: inst.raisedAt,
     generatedAt: now,
     priority: inst.priority,
-    ...(suggestedShelveDurationMs !== undefined ? { suggestedShelveDurationMs } : {}),
+    ...(suggestedShelve ?? {}),
   };
 }
 
@@ -190,7 +200,7 @@ function recommendForAcked(inst: AlarmInstance, now: number): Recommendation | u
     "SHELVE",
     `Low-priority alarm acknowledged ${formatDuration(age)} ago and still active -- consider shelving to reduce clutter.`,
     factors,
-    SUGGESTED_SHELVE_DURATION_MS,
+    { suggestedShelveDurationMs: SUGGESTED_SHELVE_DURATION_MS, suggestedShelveReason: SUGGESTED_SHELVE_REASON },
   );
 }
 
