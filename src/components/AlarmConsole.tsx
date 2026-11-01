@@ -87,8 +87,15 @@ export function AlarmConsole() {
       {alarms.length === 0 ? (
         <p className="alarm-empty">No active alarms.</p>
       ) : (
-        <div role="list" aria-label="Active alarms" className="alarm-list">
+        <div className="alarm-list">
+          {/* react-window's List already renders its own role="list"
+              container with role="listitem" rows -- wrapping it in
+              another role="list" div would put a non-listitem node
+              between two list roles, which fails the
+              aria-required-children check. aria-label goes straight
+              onto List's own element instead. */}
           <List<AlarmRowProps>
+            aria-label="Active alarms"
             rowComponent={AlarmRow}
             rowCount={alarms.length}
             rowHeight={ROW_HEIGHT}

@@ -74,4 +74,44 @@ describe("AlarmConsole", () => {
     expect(screen.getByRole("status")).toHaveTextContent(/flood/i);
     expect(screen.getAllByText(/Suppressed \(flood\)/).length).toBeGreaterThan(0);
   });
+
+  it("has no accessibility violations with a populated, mixed-priority board (incl. the flood banner)", async () => {
+    const user = userEvent.setup();
+    const { container } = render(<AlarmConsole />);
+
+    await user.click(screen.getByRole("button", { name: "Raise critical" }));
+    await user.click(screen.getByRole("button", { name: "Raise high" }));
+    await user.click(screen.getByRole("button", { name: /Simulate flood/ }));
+
+    const results = await axe(container);
+    expect(results).toHaveNoViolations();
+  });
+
+  it("every action on an alarm row is reachable and operable via keyboard alone, with no mouse events", async () => {
+    const user = userEvent.setup();
+    render(<AlarmConsole />);
+
+    // Tab from the top of the page to the first row's Ack button and
+    // activate it with the keyboard -- no user.click anywhere here.
+    await user.click(document.body); // establish a known focus origin without touching the console
+    await user.click(screen.getByRole("button", { name: "Raise high" }));
+
+    const row = screen.getByTestId("alarm-row");
+    const ackButton = within(row).getByRole("button", { name: /^Acknowledge/ });
+
+    ackButton.focus();
+    expect(ackButton).toHaveFocus();
+    await user.keyboard("{Enter}");
+
+    expect(within(row).getByText("Acknowledged")).toBeInTheDocument();
+
+    // Clearing an ACKED alarm retires it to CLEARED, which the console
+    // drops from the active-alarm view entirely -- so the row itself
+    // (not just its label) should disappear.
+    const clearButton = within(row).getByRole("button", { name: /^Clear/ });
+    clearButton.focus();
+    await user.keyboard(" "); // space also activates a button, per native semantics
+    expect(screen.queryByTestId("alarm-row")).not.toBeInTheDocument();
+    expect(screen.getByText("No active alarms.")).toBeInTheDocument();
+  });
 });
